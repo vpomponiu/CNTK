@@ -438,6 +438,8 @@ Test module "V2LibraryTests" has passed with:
 
     Test case "SerializationSuite/CheckpointingWithStatefulNodesInGPU" has passed
 
+    Test case "SerializationSuite/CheckpointingWithStatefulNodesAndExplicitSeeds" has passed
+
   Test suite "FeedForwardSuite" has passed with:
     6 test cases out of 6 passed
     8 assertions out of 8 passed
