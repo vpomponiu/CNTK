@@ -37,6 +37,7 @@ from lib.rpn.cntk_ignore_label import IgnoreLabel
 ###############################################################
 ###############################################################
 make_mode = False
+graph_type = "png" # "png" or "pdf"
 
 # file and stream names
 map_filename_postfix = '.imgMap.txt'
@@ -54,7 +55,7 @@ num_rois = 100
 epoch_size = 25
 num_test_images = 5
 mb_size = 1
-max_epochs = 1 # 3
+max_epochs = 3 # 3
 momentum_time_constant = 10
 
 # model specific variables (only AlexNet for now)
@@ -251,7 +252,7 @@ def train_faster_rcnn(debug_output=False):
     # Instantiate the Faster R-CNN prediction model and loss function
     cls_score, loss, pred_error = faster_rcnn_predictor(image_input, roi_input, num_classes)
     if debug_output:
-        plot(loss, os.path.join(abs_path, "graph_frcn.png"))
+        plot(loss, os.path.join(abs_path, "graph_frcn." + graph_type))
 
     # Set learning parameters
     l2_reg_weight = 0.0005
@@ -311,9 +312,9 @@ def eval_faster_rcnn(model):
     cls_pred = softmax(cls_score, axis=1, name='cls_pred')
     frcn_eval = combine([cls_pred, rpn_rois, bbox_regr])
 
-    plot(conv_rpn_layers, os.path.join(abs_path, "graph_frcn_conv.png"))
-    plot(roi_fc_layers, os.path.join(abs_path, "graph_frcn_roi.png"))
-    plot(frcn_eval, os.path.join(abs_path, "graph_frcn_eval.png"))
+    plot(conv_rpn_layers, os.path.join(abs_path, "graph_frcn_conv." + graph_type))
+    plot(roi_fc_layers, os.path.join(abs_path, "graph_frcn_roi." + graph_type))
+    plot(frcn_eval, os.path.join(abs_path, "graph_frcn_eval." + graph_type))
 
     test_minibatch_source = create_test_mb_source(image_height, image_width, num_channels, num_rois, base_path)
     input_map = {
