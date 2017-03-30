@@ -18,8 +18,8 @@ from fast_rcnn.bbox_transform import bbox_transform
 from utils.cython_bbox import bbox_overlaps
 
 DEBUG = False
-debug_fwd = False
-debug_bkw = False
+debug_fwd = True
+debug_bkw = True
 
 class AnchorTargetLayer(UserFunction):
     """

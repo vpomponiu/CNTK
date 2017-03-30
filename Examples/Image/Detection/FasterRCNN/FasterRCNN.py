@@ -16,18 +16,19 @@ sys.path.append(os.path.join(abs_path, "lib", "rpn"))
 sys.path.append(os.path.join(abs_path, "lib", "nms"))
 sys.path.append(os.path.join(abs_path, "lib", "nms", "gpu"))
 
-from cntk import Trainer, UnitType, load_model, user_function, Axis
+from cntk import *
+#from cntk import Trainer, UnitType, load_model, user_function, Axis, input, parameter, times, combine, relu, softmax, roipooling, reduce_sum, slice, splice, reshape, plus, CloneMethod
+#from cntk.ops import parameter, times, combine, relu, softmax, roipooling, reduce_sum, slice, splice, reshape, plus
+#from cntk.ops.functions import CloneMethod
 from cntk.io import MinibatchSource, ImageDeserializer, CTFDeserializer, StreamDefs, StreamDef
-from cntk.io.transforms import *
+from cntk.io.transforms import scale
 from cntk.initializer import glorot_uniform
-from cntk.layers import Placeholder, Constant, Convolution, Input
+from cntk.layers import placeholder, Convolution, Constant
 from cntk.learners import momentum_sgd, learning_rate_schedule, momentum_as_time_constant_schedule
 from cntk.logging import log_number_of_parameters, ProgressPrinter
 from cntk.logging.graph import find_by_name, plot, get_node_outputs
 from cntk.losses import cross_entropy_with_softmax
 from cntk.metrics import classification_error
-from cntk.ops import input_variable, parameter, times, combine, relu, softmax, roipooling, reduce_sum, slice, splice, reshape, plus
-from cntk.ops.functions import CloneMethod
 from lib.rpn.cntk_anchor_target_layer import AnchorTargetLayer
 from lib.rpn.cntk_proposal_layer import ProposalLayer
 from lib.rpn.cntk_proposal_target_layer import ProposalTargetLayer
@@ -95,7 +96,7 @@ def create_mb_source(img_height, img_width, img_channels, n_rois, data_path):
 
     # read rois and labels
     roi_source = CTFDeserializer(roi_file, StreamDefs(
-        rois = StreamDef(field=roi_stream_name, shape=rois_dim, is_sparse=False)))
+        roiAndLabel = StreamDef(field=roi_stream_name, shape=rois_dim, is_sparse=False)))
 
     # define a composite reader
     return MinibatchSource([image_source, roi_source], epoch_size=sys.maxsize, randomize=True)
@@ -133,8 +134,8 @@ def faster_rcnn_predictor(features, gt_boxes, n_classes):
     last_node    = find_by_name(loaded_model, last_hidden_node_name)
 
     # Clone the conv layers and the fully connected layers of the network
-    conv_layers = combine([conv_node.owner]).clone(CloneMethod.freeze, {feature_node: Placeholder()})
-    fc_layers = combine([last_node.owner]).clone(CloneMethod.clone, {pool_node: Placeholder()})
+    conv_layers = combine([conv_node.owner]).clone(CloneMethod.freeze, {feature_node: placeholder()})
+    fc_layers = combine([last_node.owner]).clone(CloneMethod.clone, {pool_node: placeholder()})
 
     # Create the Faster R-CNN model
     feat_norm = features - Constant(114)
@@ -236,17 +237,13 @@ def train_faster_rcnn(debug_output=False):
     minibatch_source = create_mb_source(image_height, image_width, num_channels, num_rois, base_path)
 
     # Input variables denoting features and labeled ground truth rois (as 5-tuples per roi)
-    #Input(shape, sparse=false, dynamicAxis=DefaultAxis, tag='feature')
-
-    image_input = input_variable((num_channels, image_height, image_width), dynamic_axes=[Axis.default_batch_axis()], name='img_input')
-    roi_input   = input_variable((num_rois, 5), dynamic_axes=[Axis.default_batch_axis()])
-    #image_input = Input((num_channels, image_height, image_width), dynamic_axes=[Axis.default_batch_axis()], name='img_input')
-    #roi_input   = Input((num_rois, 5), dynamic_axes=[Axis.default_batch_axis()])
+    image_input = input((num_channels, image_height, image_width), dynamic_axes=[Axis.default_batch_axis()], name='img_input')
+    roi_input   = input((num_rois, 5), dynamic_axes=[Axis.default_batch_axis()])
 
     # define mapping from reader streams to network inputs
     input_map = {
-        image_input: minibatch_source.streams.features,
-        roi_input: minibatch_source.streams.rois
+        image_input: minibatch_source[features_stream_name],
+        roi_input: minibatch_source[roi_stream_name]
     }
 
     # Instantiate the Faster R-CNN prediction model and loss function
@@ -286,7 +283,7 @@ def train_faster_rcnn(debug_output=False):
 
 # Tests a Faster R-CNN model
 def eval_faster_rcnn(model):
-    image_input = input_variable((num_channels, image_height, image_width), dynamic_axes=[Axis.default_batch_axis()], name='img_input')
+    image_input = input((num_channels, image_height, image_width), dynamic_axes=[Axis.default_batch_axis()], name='img_input')
 
     # modify Faster RCNN model by excluding target layers and losses
     feature_node = find_by_name(model, "img_input")
@@ -297,9 +294,9 @@ def eval_faster_rcnn(model):
     bbox_pred_node = find_by_name(model, "bbox_regr")
 
     conv_rpn_layers = combine([conv_node.owner, rpn_roi_node.owner])\
-        .clone(CloneMethod.freeze, {feature_node: Placeholder()})
+        .clone(CloneMethod.freeze, {feature_node: placeholder()})
     roi_fc_layers = combine([cls_score_node.owner, bbox_pred_node.owner])\
-        .clone(CloneMethod.clone, {conv_node: Placeholder(), rpn_target_roi_node: Placeholder()})
+        .clone(CloneMethod.clone, {conv_node: placeholder(), rpn_target_roi_node: placeholder()})
 
     conv_rpn_net = conv_rpn_layers(image_input)
     conv_out = conv_rpn_net.outputs[0]

@@ -16,8 +16,8 @@ from fast_rcnn.bbox_transform import bbox_transform_inv, clip_boxes
 from fast_rcnn.nms_wrapper import nms
 
 DEBUG = False
-debug_fwd = False
-debug_bkw = False
+debug_fwd = True
+debug_bkw = True
 
 # rpn_rois = user_function(ProposalLayer(rpn_cls_prob, rpn_bbox_pred, im_info))
 class ProposalLayer(UserFunction):
@@ -59,9 +59,6 @@ class ProposalLayer(UserFunction):
 
     def forward(self, arguments, device=None, outputs_to_retain=None):
         if debug_fwd: print("--> Entering forward in {}".format(self.name))
-        #rpn_cls_prob, rpn_bbox_pred, im_info = arguments
-        bottom = arguments
-
         # Algorithm:
         #
         # for each (H, W) location i
@@ -75,6 +72,7 @@ class ProposalLayer(UserFunction):
         # take after_nms_topN proposals after NMS
         # return the top proposals (-> RoIs top, scores top)
 
+        bottom = arguments
         assert bottom[0].data.shape[0] == 1, \
             'Only single item batches are supported'
 
