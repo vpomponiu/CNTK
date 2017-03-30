@@ -402,6 +402,11 @@ namespace CNTK
             Microsoft::MSR::CNTK::TracingGPUMemoryAllocator::SetTraceLevel(traceLevel);
         }
 
+        void SetMathLibTraceLevel(int traceLevel)
+        {
+            Microsoft::MSR::CNTK::SetMathLibTraceLevel(traceLevel);
+        }
+
         void ForceDeterministicAlgorithms()
         {
             Microsoft::MSR::CNTK::Globals::ForceDeterministicAlgorithms();
@@ -432,6 +437,38 @@ namespace CNTK
         {
             return DEFAULT_PACK_THRESHOLD_SIZE_IN_BYTES;
         }
+    }
+
+    std::atomic<TraceLevel> s_traceLevel(TraceLevel::Error);
+    void SetTraceLevel(TraceLevel value)
+    {
+        using namespace Internal;
+
+        auto previousValue = s_traceLevel.exchange(value);
+
+        if (previousValue == value)
+            return;
+
+        if (value == TraceLevel::Info)
+        {
+            // V1 does not have an intermediate trace level,
+            // the logging is either disabled (trace level = 0)
+            // or enabled (trace level != 0);
+            SetComputationNetworkTraceLevel(value);
+            SetGPUMemoryAllocationTraceLevel(value);
+            SetMathLibTraceLevel(value);
+        }
+        else if (previousValue == TraceLevel::Info)
+        {
+            SetComputationNetworkTraceLevel(0);
+            SetGPUMemoryAllocationTraceLevel(0);
+            SetMathLibTraceLevel(0);
+        }
+    }
+
+    TraceLevel GetTraceLevel()
+    {
+        return s_traceLevel.load();
     }
 
     /*static*/ const NDShape NDShape::Unknown(1, SentinelDimValueForUnknownShape);

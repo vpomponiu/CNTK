@@ -248,7 +248,7 @@ namespace CNTK
                     primitiveFunction->m_attributes[PrimitiveFunction::AttributeNameRngSeed] = seed;
                     primitiveFunction->m_attributes[PrimitiveFunction::AttributeNameRngOffset] = offset;
                 }  
-                else if (Internal::GetComputationNetworkTraceLevel() > 0)
+                else if (GetTraceLevel() >= TraceLevel::Warning)
                 {
                     // TODO: all logging functionality should be refactored to live in a logging utility class. 
                     fprintf(stderr, "WARNING: no state information found for the stateful function (%ls) "
