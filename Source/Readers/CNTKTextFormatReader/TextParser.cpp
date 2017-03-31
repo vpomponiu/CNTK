@@ -175,13 +175,12 @@ void TextParser<ElemType>::Initialize()
     assert(m_indexer != nullptr);
 
     int64_t position = _ftelli64(m_file);
-    if (position == -1L)
+    if (position < 0)
     {
         RuntimeError("Error retrieving current position in the input file (%ls).", m_filename.c_str());
     }
 
-    m_fileOffsetStart = position;
-    m_fileOffsetEnd = position;
+    m_fileOffsetEnd = m_fileOffsetStart = static_cast<size_t>(position);
 }
 
 template <class ElemType>
@@ -213,12 +212,12 @@ void TextParser<ElemType>::GetSequencesForChunk(ChunkIdType chunkId, std::vector
     const auto& chunk = index.m_chunks[chunkId];
     result.reserve(chunk.m_sequences.size());
 
-    for (size_t i = 0; i < chunk.m_sequences.size(); ++i)
+    for (size_t sequenceIndex = 0; sequenceIndex < chunk.m_sequences.size(); ++sequenceIndex)
     {
-        auto const& s = chunk.m_sequences[i];
+        auto const& s = chunk.m_sequences[sequenceIndex];
         result.push_back(
         {
-            i,
+            sequenceIndex,
             s.m_numberOfSamples,
             chunkId,
             s.m_key
@@ -266,10 +265,10 @@ template <class ElemType>
 void TextParser<ElemType>::LoadChunk(TextChunkPtr& chunk, const ChunkDescriptor& descriptor)
 {
     chunk->m_sequenceMap.resize(descriptor.m_sequences.size());
-    for (size_t i = 0; i < descriptor.m_sequences.size(); ++i)
+    for (size_t sequenceIndex = 0; sequenceIndex < descriptor.m_sequences.size(); ++sequenceIndex)
     {
-        const auto& sequenceDescriptor = descriptor.m_sequences[i];
-        chunk->m_sequenceMap[i] = LoadSequence(sequenceDescriptor, descriptor.m_offset);
+        const auto& sequenceDescriptor = descriptor.m_sequences[sequenceIndex];
+        chunk->m_sequenceMap[sequenceIndex] = LoadSequence(sequenceDescriptor, descriptor.m_offset);
     }
 }
 
@@ -328,10 +327,10 @@ void TextParser<ElemType>::SetFileOffset(int64_t offset)
 }
 
 template <class ElemType>
-typename TextParser<ElemType>::SequenceBuffer TextParser<ElemType>::LoadSequence(const SequenceDescriptor& sequenceDsc, size_t chunkOffset)
+typename TextParser<ElemType>::SequenceBuffer TextParser<ElemType>::LoadSequence(const SequenceDescriptor& sequenceDsc, size_t chunkOffsetInFile)
 {
-    size_t fileOffset = sequenceDsc.SequenceOffsetInChunk() + chunkOffset;
-    if (fileOffset < (size_t)m_fileOffsetStart || fileOffset > (size_t)m_fileOffsetEnd)
+    size_t fileOffset = sequenceDsc.SequenceOffsetInChunk() + chunkOffsetInFile;
+    if (fileOffset < m_fileOffsetStart || fileOffset > m_fileOffsetEnd)
     {
         SetFileOffset(fileOffset);
     }
@@ -1302,11 +1301,18 @@ bool TextParser<ElemType>::GetSequenceDescriptionByKey(const KeyType& key, Seque
         return false;
     }
 
-    const auto& descriptor = m_indexer->GetIndex().m_chunks[sequenceLocation->second.first].m_sequences[sequenceLocation->second.second];
+    const auto& index = m_indexer->GetIndex();
+
+    assert(sequenceLocation->second.first < index.m_chunks.size());
+    const auto& chunk = index.m_chunks[sequenceLocation->second.first];
+
+    assert(sequenceLocation->second.second < chunk.m_sequences.size());
+    const auto& sequence = chunk.m_sequences[sequenceLocation->second.second];
+
     result.m_chunkId = sequenceLocation->second.first;
     result.m_indexInChunk = sequenceLocation->second.second;
-    result.m_numberOfSamples = descriptor.m_numberOfSamples;
-    result.m_key = descriptor.m_key;
+    result.m_numberOfSamples = sequence.m_numberOfSamples;
+    result.m_key = sequence.m_key;
     return true;
 }
 
