@@ -100,16 +100,13 @@ struct Index
             // If the size is exceeded, finalizing the current chunk
             // and creating a new one.
             chunk->m_sequences.shrink_to_fit();
-            const auto* previousChunk = chunk;
+            size_t newOffset = chunk->m_offset + 
+                chunk->m_sequences.back().SequenceOffsetInChunk() + chunk->m_sequences.back().m_byteSize;
 
             m_chunks.push_back({});
             chunk = &m_chunks.back();
             chunk->m_id = (ChunkIdType)(m_chunks.size() - 1);
-
-            // Picking up the offset of the last sequence in previous chunk.
-            const auto& previousSequence = previousChunk->m_sequences.back();
-            chunk->m_offset = previousChunk->m_offset + 
-                previousSequence.SequenceOffsetInChunk() + previousSequence.m_byteSize;
+            chunk->m_offset = newOffset;
 
             if (CHUNKID_MAX < m_chunks.size())
             {
