@@ -145,7 +145,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
                 case State::UtteranceFrames:
                 {
                     if (distance(lines[i].begin(), lines[i].end()) != 1 || *lines[i].begin() != '.')
-                        continue; // Still current utterance.
+                        break; // Still current utterance.
 
                     // Ok, a single . on a line means we found the end of the utterance.
                     auto sequenceEndOffset = m_fileOffsetStart + lines[i].end() - m_buffer.data();

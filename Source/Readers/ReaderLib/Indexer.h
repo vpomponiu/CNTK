@@ -104,7 +104,11 @@ struct Index
             m_chunks.push_back({});
             chunk = &m_chunks.back();
             chunk->m_id = (ChunkIdType)(m_chunks.size() - 1);
-            chunk->m_offset = previousChunk->m_offset + previousChunk->m_byteSize;
+
+            const auto& previousSequence = previousChunk->m_sequences.back();
+            chunk->m_offset = previousChunk->m_offset + 
+                previousSequence.SequenceOffsetInChunk() + previousSequence.m_byteSize;
+
             if (CHUNKID_MAX < m_chunks.size())
             {
                 RuntimeError("Maximum number of chunks exceeded");

@@ -82,8 +82,8 @@ protected:
             LogicError("Empty chunks are not supported.");
 
         auto f = shared_ptr<FILE>(fopenOrDie(fileName, L"rbS"), [](FILE *f) { if (f) fclose(f); });
-
-        size_t sizeInBytes = descriptor.m_byteSize;
+        size_t sizeInBytes =
+            descriptor.m_sequences.back().SequenceOffsetInChunk() + descriptor.m_sequences.back().SizeInBytes();
 
         // Make sure we always have 0 at the end for buffer overrun.
         m_buffer.resize(sizeInBytes + 1);
