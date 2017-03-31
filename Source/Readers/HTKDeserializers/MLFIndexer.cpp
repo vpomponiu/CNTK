@@ -81,6 +81,12 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         }
     }
 
+    // Building an index of the MLF file:
+    //     MLF file -> MLF Header [MLF Utterance]+
+    //     MLF Utterance -> Key EOL [Frame Range EOL]+ "." EOL
+    // MLF file should start with the MLF header (State::Header -> State:UtteranceKey).
+    // Each utterance starts with an utterance key (State::UtteranceKey -> State::UtteranceFrames).
+    // End of utterance is indicated by a single dot on a line (State::UtteranceFrames -> State::UtteranceKey)
     void MLFIndexer::Build(CorpusDescriptorPtr corpus)
     {
         if (!m_index.IsEmpty())
@@ -128,7 +134,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
                         continue;
 
                     sequenceStartOffset = m_fileOffsetStart + lines[i].begin() - m_buffer.data();
-                    isValid = TryParseSequenceId(lines[i], id, corpus->KeyToId);
+                    isValid = TryParseSequenceKey(lines[i], id, corpus->KeyToId);
                     sd = {};
                     sd.m_key.m_sequence = id;
                     currentState = State::UtteranceFrames;
@@ -192,26 +198,26 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         boost::split(lines, range, boost::is_any_of("\r\n"));
     }
 
-    bool MLFIndexer::TryParseSequenceId(const boost::iterator_range<char*>& line, size_t& id, function<size_t(const string&)> keyToId)
+    // Tries to parse sequence key
+    // In MLF a sequence key should be in quotes. During parsing the extension should be removed.
+    bool MLFIndexer::TryParseSequenceKey(const boost::iterator_range<char*>& line, size_t& id, function<size_t(const string&)> keyToId)
     {
         id = 0;
 
         string key(line.begin(), line.end());
         boost::trim_right(key);
 
-        if (key.size() > 2 && key.front() == '"' && key.back() == '"')
-        {
-            key = key.substr(1, key.size() - 2);
-            if (key.size() > 2 && key[0] == '*' && key[1] == '/')
-                key = key.substr(2);
+        if (key.size() <= 2 || key.front() != '"' || key.back() != '"')
+            return false;
 
-            // Remove extension if specified.
-            key = key.substr(0, key.find_last_of("."));
+        key = key.substr(1, key.size() - 2);
+        if (key.size() > 2 && key[0] == '*' && key[1] == '/') // Preserving the old behavior
+            key = key.substr(2);
 
-            id = keyToId(key);
-            return true;
-        }
+        // Remove extension if specified.
+        key = key.substr(0, key.find_last_of("."));
 
-        return false;
+        id = keyToId(key);
+        return true;
     }
 }}}

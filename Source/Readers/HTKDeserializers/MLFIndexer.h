@@ -47,7 +47,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         void RefillBuffer();
 
         void ReadLines(vector<char>& buffer, vector<boost::iterator_range<char*>>& lines);
-        bool TryParseSequenceId(const boost::iterator_range<char*>& line, size_t& id, std::function<size_t(const std::string&)> keyToId);
+        bool TryParseSequenceKey(const boost::iterator_range<char*>& line, size_t& id, std::function<size_t(const std::string&)> keyToId);
 
         std::string m_lastPartialLineInBuffer;
         std::string m_lastNonEmptyLine;
