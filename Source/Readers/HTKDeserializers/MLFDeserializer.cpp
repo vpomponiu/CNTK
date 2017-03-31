@@ -156,7 +156,7 @@ public:
             return GetSequence<float>(sequenceIndex, result);
         else
         {
-            assert(m_parent.m_elementType == ElementType::tdouble);
+            assert(m_deserializer.m_elementType == ElementType::tdouble);
             return GetSequence<double>(sequenceIndex, result);
         }
     }
@@ -248,7 +248,7 @@ public:
         }
 
         size_t label = m_classIds[sequenceIndex];
-        assert(label < m_parent.m_categories.size());
+        assert(label < m_deserializer.m_categories.size());
         result.push_back(m_deserializer.m_categories[label]);
     }
 

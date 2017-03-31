@@ -97,8 +97,8 @@ struct Index
         ChunkDescriptor* chunk = &m_chunks.back();
         if (chunk->m_byteSize > 0 && (chunk->m_byteSize + sd.m_byteSize) > m_maxChunkSize)
         {
-            const auto& previousChunk = chunk;
-            previousChunk->m_sequences.shrink_to_fit();
+            chunk->m_sequences.shrink_to_fit();
+            const auto* previousChunk = chunk;
 
             // Creating a new chunk if the size is exceeded.
             m_chunks.push_back({});
