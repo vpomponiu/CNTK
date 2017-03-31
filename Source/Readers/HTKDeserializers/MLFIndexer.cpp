@@ -17,11 +17,9 @@ namespace Microsoft { namespace MSR { namespace CNTK {
     const static char ROW_DELIMITER = '\n';
 
     MLFIndexer::MLFIndexer(FILE* file, bool frameMode, size_t chunkSize, size_t bufferSize) :
-        m_bufferSize(bufferSize),
+        m_maxBufferSize(bufferSize),
         m_file(file),
         m_fileOffsetStart(0),
-        m_fileOffsetEnd(0),
-        m_buffer(bufferSize),
         m_done(false),
         m_index(chunkSize, true, frameMode)
     {
@@ -31,54 +29,60 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
     void MLFIndexer::RefillBuffer()
     {
-        if (!m_done)
+        if (m_done)
+            return;
+
+        // Move start forward according to the already read buffer.
+        m_fileOffsetStart += m_buffer.size();
+
+        // Read the new portion of data into the buffer.
+        m_buffer.resize(m_maxBufferSize);
+
+        // Copy last partial line if it was left during the last read.
+        memcpy(&m_buffer[0], m_lastPartialLineInBuffer.data(), m_lastPartialLineInBuffer.size());
+
+        size_t bytesRead = fread(&m_buffer[0] + m_lastPartialLineInBuffer.size(), 1, m_buffer.size() - m_lastPartialLineInBuffer.size(), m_file);
+        if (bytesRead == (size_t)-1)
+            RuntimeError("Could not read from the input file.");
+
+        if (bytesRead == 0) // End of file reached.
         {
-            // Make sure we always have m_bufferSize elements in side the buffer.
-            m_buffer.resize(m_bufferSize);
+            boost::trim(m_lastPartialLineInBuffer);
+            if (!m_lastPartialLineInBuffer.empty()) // It seems like a corrupted file at the end.
+                RuntimeError("Unexpected line at the end of the file '%s'", m_lastPartialLineInBuffer.c_str());
 
-            // Copy last partial line if needed.
-            memcpy(&m_buffer[0], m_lastPartialLineInBuffer.data(), m_lastPartialLineInBuffer.size());
-            size_t bytesRead = fread(&m_buffer[0] + m_lastPartialLineInBuffer.size(), 1, m_buffer.size() - m_lastPartialLineInBuffer.size(), m_file);
-            if (bytesRead == (size_t)-1)
-                RuntimeError("Could not read from the input file.");
-
-            if (bytesRead == 0) // End of file reached.
-            {
-                m_buffer.clear();
-                m_lastPartialLineInBuffer.clear();
-                m_fileOffsetStart = m_fileOffsetEnd;
-                m_done = true;
-                return;
-            }
-
-            int lastLF = 0;
-            {
-                // Let's find the latest \n if exists.
-                for (lastLF = (int)m_lastPartialLineInBuffer.size() + (int)bytesRead - 1; lastLF >= 0; lastLF--)
-                {
-                    if (m_buffer[lastLF] == '\n')
-                        break;
-                }
-
-                if (lastLF < 0)
-                    RuntimeError("Length of MLF sequence cannot exceed '%" PRIu64 "' bytes.", m_bufferSize);
-            }
-
-            // Lets cut the buffer at the last end of string, and save partial string 
-            // in m_lastLineInBuffer
-            auto logicalBufferEnd = lastLF + 1;
-
-            m_fileOffsetStart = m_fileOffsetEnd;
-            m_fileOffsetEnd = m_fileOffsetStart + logicalBufferEnd;
-
-            auto lastParialLineSize = m_buffer.size() - logicalBufferEnd;
-
-            // Remember the last possibly parital line.
-            m_lastPartialLineInBuffer.resize(lastParialLineSize);
-            memcpy(&m_lastPartialLineInBuffer[0], m_buffer.data() + logicalBufferEnd, lastParialLineSize);
-
-            m_buffer.resize(logicalBufferEnd);
+            m_buffer.clear();
+            m_lastPartialLineInBuffer.clear();
+            m_done = true;
+            return;
         }
+
+        size_t readBufferSize = m_lastPartialLineInBuffer.size() + bytesRead;
+
+        // Let's find the last LF.
+        int lastLF = 0;
+        {
+            // Let's find the latest \n if exists.
+            for (lastLF = (int)readBufferSize - 1; lastLF >= 0; lastLF--)
+            {
+                if (m_buffer[lastLF] == '\n')
+                    break;
+            }
+
+            if (lastLF < 0)
+                RuntimeError("Length of MLF sequence cannot exceed '%" PRIu64 "' bytes.", readBufferSize);
+        }
+
+        // Lets cut the buffer at the last EOL and save partial string
+        // in m_lastPartialLineInBuffer.
+        auto logicalBufferSize = lastLF + 1;
+        auto lastParialLineSize = readBufferSize - logicalBufferSize;
+
+        // Remember the last parital line.
+        m_lastPartialLineInBuffer.resize(lastParialLineSize);
+        if (lastParialLineSize)
+            memcpy(&m_lastPartialLineInBuffer[0], m_buffer.data() + logicalBufferSize, lastParialLineSize);
+        m_buffer.resize(logicalBufferSize);
     }
 
     // Building an index of the MLF file:

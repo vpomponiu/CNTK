@@ -30,27 +30,25 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             UtteranceFrames
         };
 
-        FILE* m_file;
+        FILE* m_file;  // MLF file descriptor
+        bool m_done;   // true, when all input was processed
 
-        int64_t m_fileOffsetStart;
-        int64_t m_fileOffsetEnd;
-
-        std::vector<char> m_buffer;
-        const size_t m_bufferSize;
-        bool m_done; // true, when all input was processed
-        bool m_frameMode;
+        const size_t m_maxBufferSize;             // Max allowed buffer size.
+        std::vector<char> m_buffer;               // Buffer for data.
+        int64_t m_fileOffsetStart;                // Current start offset in file that is mapped to m_buffer.
+        std::string m_lastPartialLineInBuffer;    // Partial string from the previous read of m_buffer.
 
         Index m_index;
+
+        std::string m_lastNonEmptyLine;           // Last non empty estring, used for parsing sequence length.
 
         // fills up the buffer with data from file, all previously buffered data
         // will be overwritten.
         void RefillBuffer();
 
+        // Read lines from the buffer.
         void ReadLines(vector<char>& buffer, vector<boost::iterator_range<char*>>& lines);
         bool TryParseSequenceKey(const boost::iterator_range<char*>& line, size_t& id, std::function<size_t(const std::string&)> keyToId);
-
-        std::string m_lastPartialLineInBuffer;
-        std::string m_lastNonEmptyLine;
     };
 
     typedef std::shared_ptr<MLFIndexer> MLFIndexerPtr;
