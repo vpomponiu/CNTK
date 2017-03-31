@@ -12,7 +12,7 @@
 namespace Microsoft { namespace MSR { namespace CNTK {
 
     // Representation of a state list table.
-    // Whole table is preserved in memory, because it is never more than thousands states.
+    // The table is preserved in memory, it is never more than thousands states.
     class StateTable : boost::noncopyable
     {
     public:
@@ -36,14 +36,14 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
         static std::vector<boost::iterator_range<char*>> ReadLines(const std::wstring& path, std::vector<char>& buffer);
 
-        std::vector<bool> m_silStateMask; // [state index] => true if is sil state (cached)
+        std::vector<bool> m_silStateMask;                     // [state index] => true if is sil state (cached)
         std::unordered_map<std::string, size_t> m_stateTable; // for state <=> index
     };
 
     typedef std::shared_ptr<StateTable> StateTablePtr;
     typedef unsigned short ClassIdType;
 
-    // Representation an MLF range.
+    // Representation of an MLF range.
     class MLFFrameRange
     {
         static const double htkTimeToFrame;
@@ -71,7 +71,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         void VerifyAndSaveRange(const std::pair<size_t, size_t>& frameRange, size_t uid);
     };
 
-    // Utility class for parsing an mlf utterance.
+    // Utility class for parsing an MLF utterance.
     class MLFUtteranceParser
     {
         const StateTablePtr m_states;

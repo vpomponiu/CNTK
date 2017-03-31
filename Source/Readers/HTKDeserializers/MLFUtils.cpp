@@ -9,6 +9,8 @@
 #include <inttypes.h>
 #include "MLFUtils.h"
 
+// Disabling some deprecation warnings in boost.
+// Classes that we use are not deprecated.
 #pragma warning(disable:4348 4459 4100)
 #include <boost/algorithm/string.hpp>
 #include <boost/spirit/include/qi.hpp>
@@ -34,12 +36,9 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         }
 
         if (index != m_stateTable.size())
-            RuntimeError("readstatelist: lines (%d) not equal to statelistmap size (%d)", (int)index, (int)m_stateTable.size());
+            RuntimeError("StateTable: lines (%" PRIu64 ") not equal to state list map size (%" PRIu64 ")", index, m_stateTable.size());
 
-        if (m_stateTable.size() != m_silStateMask.size())
-            RuntimeError("readstatelist: size of statelookuparray (%d) not equal to statelistmap size (%d)", (int)m_silStateMask.size(), (int)m_stateTable.size());
-
-        fprintf(stderr, "total %lu state names in state list %ls\n", (unsigned long)m_stateTable.size(), stateListPath.c_str());
+        fprintf(stderr, "Total (%" PRIu64 ") state names in state list '%ls'\n", m_stateTable.size(), stateListPath.c_str());
 
         if (m_stateTable.empty())
             RuntimeError("State list table is not allowed to be empty.");
@@ -47,7 +46,8 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
     vector<boost::iterator_range<char*>> StateTable::ReadLines(const wstring& path, vector<char>& buffer)
     {
-        // load it into RAM in one huge chunk
+        // load it into RAM in one huge chunk, not more than a couple 
+        // thousand states.
         auto_file_ptr f(fopenOrDie(path, L"rb"));
         size_t len = filesize(f);
         buffer.reserve(len + 1);
@@ -59,12 +59,11 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         auto range = boost::make_iterator_range(buffer.data(), buffer.data() + buffer.size());
         boost::split(lines, range, boost::is_any_of("\r\n"));
 
+        // Remove all empty lines.
         auto end = std::remove_if(lines.begin(), lines.end(), [](const boost::iterator_range<char*>& r) { return r.begin() == r.end(); });
         lines.erase(end, lines.end());
         return lines;
     }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     const double MLFFrameRange::htkTimeToFrame = 100000.0;
 
@@ -98,7 +97,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
     void MLFFrameRange::VerifyAndSaveRange(const pair<size_t, size_t>& frameRange, size_t uid)
     {
         if (frameRange.second < frameRange.first)
-            RuntimeError("MLFFrameRange Error: end time earlier than start time.");
+            RuntimeError("MLFFrameRange: end time is earlier than start time.");
 
         m_firstFrame = (unsigned int)frameRange.first;
         m_numFrames = (unsigned int)(frameRange.second - frameRange.first);
@@ -106,7 +105,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
         // check for numeric overflow
         if (m_firstFrame != frameRange.first || m_firstFrame + m_numFrames != frameRange.second || m_classId != uid)
-            RuntimeError("MLFFrameRange Error: not enough bits for one of the values.");
+            RuntimeError("MLFFrameRange: not enough bits for one of the frame range values.");
     }
 
     pair<size_t, size_t> MLFFrameRange::ParseFrameRange(const vector<boost::iterator_range<char*>>& tokens)
@@ -122,7 +121,8 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         if (!boost::spirit::qi::parse(tokens[1].begin(), tokens[1].end(), boost::spirit::qi::double_, rte))
             RuntimeError("MLFFrameRange: cannot parse end frame.");
 
-        // if the difference between two frames is more than htkTimeToFrame, we expect conversion to time
+        // Simulating the old reader behavior.
+        // If the difference between two frames is more than htkTimeToFrame, we expect conversion to time
         if (rte - rts >= htkTimeToFrame - 1) // convert time to frame
         {
             return make_pair(
@@ -135,8 +135,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         }
     }
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+    // Parses the data into a vector of MLFFrameRanges.
     bool MLFUtteranceParser::Parse(const boost::iterator_range<char*>& sequenceData, vector<MLFFrameRange>& utterance)
     {
         // Split to lines.
@@ -149,7 +148,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             [](const boost::iterator_range<char*>& a) { return std::distance(a.begin(), a.end()) == 0; });
         lines.erase(end, lines.end());
 
-        // Start actual parsing of actual entry
+        // Start parsing of actual entry
         size_t idx = 0;
         string sequenceKey = string(lines[idx].begin(), lines[idx].end());
         idx++;
