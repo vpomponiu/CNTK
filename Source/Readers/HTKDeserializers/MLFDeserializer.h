@@ -52,9 +52,9 @@ private:
     // avoid memory copy.
     void InitializeReadOnlyArrayOfLabels();
 
-    // Vector that maps KeyType.m_sequence into an utterance ID (or SIZE_MAX if the key is not assigned).
+    // Vector that maps KeyType.m_sequence into an utterance ID (or type max() if the key is not assigned).
     // This assumes that IDs introduced by the corpus are dense (which they right now, depending on the number of invalid / filtered sequences).
-    std::vector<std::pair<uint32_t, uint32_t>> m_keyToSequence;
+    std::vector<std::pair<ChunkIdType, uint32_t>> m_keyToSequence;
 
     // Type of the data this serializer provides.
     ElementType m_elementType;

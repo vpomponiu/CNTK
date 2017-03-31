@@ -66,14 +66,14 @@ struct MLFSequenceData : SparseSequenceData
 class MLFDeserializer::ChunkBase : public Chunk
 {
 protected:
-    std::vector<char> m_buffer;   // Buffer for the whole chunk
-    std::vector<bool> m_valid;    // Bit mask whether the parsed sequence is valid.
+    vector<char> m_buffer;   // Buffer for the whole chunk
+    vector<bool> m_valid;    // Bit mask whether the parsed sequence is valid.
     MLFUtteranceParser m_parser;
 
     const MLFDeserializer& m_deserializer;
     const ChunkDescriptor& m_descriptor;     // Current chunk descriptor.
 
-    ChunkBase(const MLFDeserializer& deserializer, const ChunkDescriptor& descriptor, const std::wstring& fileName, const StateTablePtr& states)
+    ChunkBase(const MLFDeserializer& deserializer, const ChunkDescriptor& descriptor, const wstring& fileName, const StateTablePtr& states)
         : m_parser(states),
           m_descriptor(descriptor),
           m_deserializer(deserializer)
@@ -81,7 +81,7 @@ protected:
         if (descriptor.m_sequences.empty() || !descriptor.m_byteSize)
             LogicError("Empty chunks are not supported.");
 
-        auto f = std::shared_ptr<FILE>(fopenOrDie(fileName, L"rbS"), [](FILE *f) { if (f) fclose(f); });
+        auto f = shared_ptr<FILE>(fopenOrDie(fileName, L"rbS"), [](FILE *f) { if (f) fclose(f); });
 
         size_t sizeInBytes = descriptor.m_byteSize;
 
@@ -102,7 +102,7 @@ protected:
         m_valid.resize(m_descriptor.m_numberOfSequences, true);
     }
 
-    std::string KeyOf(const SequenceDescriptor& s)
+    string KeyOf(const SequenceDescriptor& s)
     {
         return m_deserializer.m_corpus->IdToKey(s.m_key.m_sequence);
     }
@@ -118,10 +118,10 @@ protected:
 // MLF chunk when operating in sequence mode.
 class MLFDeserializer::SequenceChunk : public MLFDeserializer::ChunkBase
 {
-    std::vector<std::vector<MLFFrameRange>> m_sequences; // Each sequence is a vector of sequential frame ranges.
+    vector<vector<MLFFrameRange>> m_sequences; // Each sequence is a vector of sequential frame ranges.
 
 public:
-    SequenceChunk(const MLFDeserializer& parent, const ChunkDescriptor& descriptor, const std::wstring& fileName, StateTablePtr states)
+    SequenceChunk(const MLFDeserializer& parent, const ChunkDescriptor& descriptor, const wstring& fileName, StateTablePtr states)
         : ChunkBase(parent, descriptor, fileName, states)
     {
         m_sequences.resize(m_descriptor.m_numberOfSequences);
@@ -138,7 +138,7 @@ public:
         auto start = m_buffer.data() + sequence.SequenceOffsetInChunk();
         auto end = start + sequence.SizeInBytes();
 
-        std::vector<MLFFrameRange> utterance;
+        vector<MLFFrameRange> utterance;
         bool parsed = m_parser.Parse(boost::make_iterator_range(start, end), utterance);
         if (!parsed) // cannot parse
         {
@@ -147,10 +147,10 @@ public:
             return;
         }
 
-        m_sequences[index] = std::move(utterance);
+        m_sequences[index] = move(utterance);
     }
 
-    void GetSequence(size_t sequenceIndex, std::vector<SequenceDataPtr>& result) override
+    void GetSequence(size_t sequenceIndex, vector<SequenceDataPtr>& result) override
     {
         if (m_deserializer.m_elementType == ElementType::tfloat)
             return GetSequence<float>(sequenceIndex, result);
@@ -162,7 +162,7 @@ public:
     }
 
     template<class ElementType>
-    void GetSequence(size_t sequenceIndex, std::vector<SequenceDataPtr>& result)
+    void GetSequence(size_t sequenceIndex, vector<SequenceDataPtr>& result)
     {
         if (!m_valid[sequenceIndex])
         {
@@ -192,7 +192,7 @@ public:
                 RuntimeError("Class id '%ud' exceeds the model output dimension '%d'.", range.ClassId(), (int)m_deserializer.m_dimension);
 
             // Filling all range of frames with the corresponding class id.
-            std::fill(startRange, startRange + range.NumFrames(), static_cast<IndexType>(range.ClassId()));
+            fill(startRange, startRange + range.NumFrames(), static_cast<IndexType>(range.ClassId()));
             startRange += range.NumFrames();
         }
 
@@ -207,10 +207,10 @@ public:
 class MLFDeserializer::FrameChunk : public MLFDeserializer::ChunkBase
 {
     // Actual values of frames.
-    std::vector<ClassIdType> m_classIds;
+    vector<ClassIdType> m_classIds;
 
 public:
-    FrameChunk(const MLFDeserializer& parent, const ChunkDescriptor& descriptor, const std::wstring& fileName, StateTablePtr states)
+    FrameChunk(const MLFDeserializer& parent, const ChunkDescriptor& descriptor, const wstring& fileName, StateTablePtr states)
         : ChunkBase(parent, descriptor, fileName, states)
     {
         // Preallocate a big array for filling in class ids for the whole chunk.
@@ -228,7 +228,7 @@ public:
     // Uses the upper bound to do the binary search among sequences of the chunk.
     size_t GetUtteranceForChunkFrameIndex(size_t frameIndex) const
     {
-        auto result = std::upper_bound(
+        auto result = upper_bound(
             m_descriptor.m_firstSamples.begin(),
             m_descriptor.m_firstSamples.end(),
             frameIndex,
@@ -236,7 +236,7 @@ public:
         return result - 1 - m_descriptor.m_firstSamples.begin();
     }
 
-    void GetSequence(size_t sequenceIndex, std::vector<SequenceDataPtr>& result) override
+    void GetSequence(size_t sequenceIndex, vector<SequenceDataPtr>& result) override
     {
         size_t utteranceId = GetUtteranceForChunkFrameIndex(sequenceIndex);
         if (!m_valid[utteranceId])
@@ -258,7 +258,7 @@ public:
         auto start = m_buffer.data() + sequence.SequenceOffsetInChunk();
         auto end = start + sequence.SizeInBytes();
 
-        std::vector<MLFFrameRange> utterance;
+        vector<MLFFrameRange> utterance;
         bool parsed = m_parser.Parse(boost::make_iterator_range(start, end), utterance);
         if (!parsed)
         {
@@ -275,7 +275,7 @@ public:
                 // TODO: Possibly set m_valid to false, but currently preserving the old behavior.
                 RuntimeError("Class id '%ud' exceeds the model output dimension '%d'.", range.ClassId(), (int)m_deserializer.m_dimension);
 
-            std::fill(startRange, startRange + range.NumFrames(), range.ClassId());
+            fill(startRange, startRange + range.NumFrames(), range.ClassId());
             startRange += range.NumFrames();
         }
     }
@@ -289,7 +289,7 @@ MLFDeserializer::MLFDeserializer(CorpusDescriptorPtr corpus, const ConfigParamet
 
     m_frameMode = (ConfigValue)cfg("frameMode", "true");
 
-    std::wstring precision = cfg(L"precision", L"float");;
+    wstring precision = cfg(L"precision", L"float");;
     m_elementType = AreEqualIgnoreCase(precision, L"float") ? ElementType::tfloat : ElementType::tdouble;
 
     // Same behavior as for the old deserializer - keep almost all in memory,
@@ -340,7 +340,7 @@ MLFDeserializer::MLFDeserializer(CorpusDescriptorPtr corpus, const ConfigParamet
     // because there are a lot of none aligned sets.
     m_chunkSizeBytes = labelConfig(L"chunkSizeInBytes", g_64MB);
 
-    std::wstring precision = labelConfig(L"precision", L"float");;
+    wstring precision = labelConfig(L"precision", L"float");;
     m_elementType = AreEqualIgnoreCase(precision, L"float") ? ElementType::tfloat : ElementType::tdouble;
 
     m_withPhoneBoundaries = labelConfig(L"phoneBoundaries", "false");
@@ -358,20 +358,20 @@ void MLFDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus, co
 
     if (!stateListPath.empty())
     {
-        m_stateTable = std::make_shared<StateTable>();
+        m_stateTable = make_shared<StateTable>();
         m_stateTable->ReadStateList(stateListPath);
     }
 
-    auto emptyPair = std::make_pair(std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max());
+    auto emptyPair = make_pair(numeric_limits<uint32_t>::max(), numeric_limits<uint32_t>::max());
     size_t totalNumSequences = 0;
     size_t totalNumFrames = 0;
     for (const auto& path : mlfPaths)
     {
-        std::shared_ptr<MLFIndexer> indexer;
+        shared_ptr<MLFIndexer> indexer;
         attempt(5, [this, &indexer, path, corpus]()
         {
-            auto file = std::shared_ptr<FILE>(fopenOrDie(path, L"rbS"), [](FILE *f) { if (f) fclose(f); });
-            indexer = std::make_shared<MLFIndexer>(file.get(), m_frameMode, m_chunkSizeBytes);
+            auto file = shared_ptr<FILE>(fopenOrDie(path, L"rbS"), [](FILE *f) { if (f) fclose(f); });
+            indexer = make_shared<MLFIndexer>(file.get(), m_frameMode, m_chunkSizeBytes);
             indexer->Build(corpus);
         });
 
@@ -392,13 +392,15 @@ void MLFDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus, co
                     m_keyToSequence.resize(sequence.m_key.m_sequence + 1, emptyPair);
 
                 assert(m_keyToSequence[sequence.m_key.m_sequence] == emptyPair);
-                m_keyToSequence[sequence.m_key.m_sequence] = std::make_pair(m_chunks.size(), i);
+                m_keyToSequence[sequence.m_key.m_sequence] = make_pair(static_cast<ChunkIdType>(m_chunks.size()), i);
             }
 
             totalNumSequences += chunk.m_numberOfSequences;
             totalNumFrames += chunk.m_numberOfSamples;
             m_chunkToFileIndex.insert(make_pair(&chunk, m_mlfFiles.size() - 1));
             m_chunks.push_back(&chunk);
+            if (m_chunks.size() >= numeric_limits<ChunkIdType>::max())
+                RuntimeError("Number of chunks exceeded overflow limit.");
         }
     }
 
@@ -493,8 +495,8 @@ bool MLFDeserializer::GetSequenceDescriptionByKey(const KeyType& key, SequenceDe
     auto chunkAndSequenceIndex =  m_keyToSequence[key.m_sequence];
 
     // Check whether the sequence is invalid.
-    if (chunkAndSequenceIndex.first == std::numeric_limits<uint32_t>::max() &&
-        chunkAndSequenceIndex.second == std::numeric_limits<uint32_t>::max())
+    if (chunkAndSequenceIndex.first == numeric_limits<uint32_t>::max() &&
+        chunkAndSequenceIndex.second == numeric_limits<uint32_t>::max())
         return false;
 
     const auto* chunk = m_chunks[chunkAndSequenceIndex.first];
