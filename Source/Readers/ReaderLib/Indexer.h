@@ -56,12 +56,12 @@ struct ChunkDescriptor : ChunkDescription
     // (the indexer will have to do a second pass for this chunk).
     std::vector<SequenceDescriptor> m_sequences;
 
-    size_t m_offset;
+    size_t m_offset;   // offset of the chunk in bytes
     size_t m_byteSize; // size in bytes
 
     // Offset of first sample of each sequence in the chunk.
-    // Optionally filled in by the indexer if required.
-    std::vector<size_t> m_firstSamples;
+    // Optionally filled in by the indexer.
+    std::vector<uint32_t> m_firstSamples;
 };
 
 typedef shared_ptr<ChunkDescriptor> ChunkDescriptorPtr;
@@ -77,7 +77,7 @@ struct Index
     const size_t m_maxChunkSize;                                            // maximum chunk size in bytes
     bool m_primary;                                                         // index for primary deserializer
     bool m_trackFirstSamples;                                               // flag if to build index of first samples
-                                                                            // for sequences
+                                                                            // for sequences (m_firstSamples)
 
     Index(size_t chunkSize, bool primary, bool trackFirstSamples = false)
         : m_maxChunkSize(chunkSize), m_primary(primary), m_trackFirstSamples(trackFirstSamples)
@@ -90,8 +90,8 @@ struct Index
     void AddSequence(SequenceDescriptor&& sd, size_t startOffsetInFile, size_t endOffsetInFile)
     {
         sd.m_byteSize = static_cast<uint32_t>(endOffsetInFile - startOffsetInFile);
-        if (static_cast<size_t>(sd.m_byteSize) != endOffsetInFile - startOffsetInFile)
-            RuntimeError("Sequence byte size overflows uint32_t type.");
+        if (sd.m_byteSize != endOffsetInFile - startOffsetInFile)
+            RuntimeError("Sequence size overflows uint32_t type.");
 
         assert(!m_chunks.empty());
         ChunkDescriptor* chunk = &m_chunks.back();
@@ -111,8 +111,8 @@ struct Index
             }
         }
 
-        if (m_trackFirstSamples)
-            chunk->m_firstSamples.push_back(chunk->m_numberOfSamples);
+        if (m_trackFirstSamples) // Adding number of samples where the new sequence starts.
+            chunk->m_firstSamples.push_back(static_cast<uint32_t>(chunk->m_numberOfSamples));
 
         chunk->m_byteSize += sd.m_byteSize;
         chunk->m_numberOfSequences++;
@@ -123,12 +123,11 @@ struct Index
             if (location.second != chunk->m_sequences.size())
                 RuntimeError("Number of sequences overflow the chunk capacity.");
 
-            auto sequenceId = sd.m_key.m_sequence;
-            m_keyToSequenceInChunk.insert(std::make_pair(sequenceId, location));
+            m_keyToSequenceInChunk.insert(std::make_pair(sd.m_key.m_sequence, location));
         }
 
         sd.m_chunkOffsetBytes = static_cast<uint32_t>(startOffsetInFile - chunk->m_offset);
-        if (static_cast<size_t>(sd.m_chunkOffsetBytes) != startOffsetInFile - chunk->m_offset)
+        if (sd.m_chunkOffsetBytes != startOffsetInFile - chunk->m_offset)
             RuntimeError("Chunk size overflows uint32_t type.");
         chunk->m_sequences.push_back(sd);
     }
@@ -142,11 +141,6 @@ struct Index
         }
 
         m_chunks.push_back({});
-    }
-
-    const ChunkDescription& LastChunk() const
-    {
-        assert(!m_chunks.empty());
     }
 
     // Checks if the index is empty.
