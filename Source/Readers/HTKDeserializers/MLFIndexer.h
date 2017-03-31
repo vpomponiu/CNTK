@@ -23,13 +23,20 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         const Index& GetIndex() const { return m_index; }
 
     private:
+        enum class State
+        {
+            Header,
+            UtteranceKey,
+            UtteranceFrames
+        };
+
         FILE* m_file;
 
         int64_t m_fileOffsetStart;
         int64_t m_fileOffsetEnd;
 
         std::vector<char> m_buffer;
-        size_t m_bufferSize;
+        const size_t m_bufferSize;
         bool m_done; // true, when all input was processed
         bool m_frameMode;
 
@@ -42,7 +49,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         void ReadLines(vector<char>& buffer, vector<boost::iterator_range<char*>>& lines);
         bool TryParseSequenceId(const boost::iterator_range<char*>& line, size_t& id, std::function<size_t(const std::string&)> keyToId);
 
-        std::string m_lastLineInBuffer;
+        std::string m_lastPartialLineInBuffer;
         std::string m_lastNonEmptyLine;
     };
 

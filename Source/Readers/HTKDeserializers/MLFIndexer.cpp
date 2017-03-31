@@ -10,11 +10,11 @@
 #include "MLFIndexer.h"
 #include "MLFUtils.h"
 
-using std::string;
-
-const static char ROW_DELIMITER = '\n';
-
 namespace Microsoft { namespace MSR { namespace CNTK {
+
+    using namespace std;
+
+    const static char ROW_DELIMITER = '\n';
 
     MLFIndexer::MLFIndexer(FILE* file, bool frameMode, size_t chunkSize, size_t bufferSize) :
         m_bufferSize(bufferSize),
@@ -36,16 +36,16 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             // Make sure we always have m_bufferSize elements in side the buffer.
             m_buffer.resize(m_bufferSize);
 
-            memcpy(&m_buffer[0], m_lastLineInBuffer.data(), m_lastLineInBuffer.size());
-            size_t bytesRead = fread(&m_buffer[0] + m_lastLineInBuffer.size(), 1, m_buffer.size() - m_lastLineInBuffer.size(), m_file);
-
+            // Copy last partial line if needed.
+            memcpy(&m_buffer[0], m_lastPartialLineInBuffer.data(), m_lastPartialLineInBuffer.size());
+            size_t bytesRead = fread(&m_buffer[0] + m_lastPartialLineInBuffer.size(), 1, m_buffer.size() - m_lastPartialLineInBuffer.size(), m_file);
             if (bytesRead == (size_t)-1)
                 RuntimeError("Could not read from the input file.");
 
-            if (bytesRead == 0)
+            if (bytesRead == 0) // End of file reached.
             {
                 m_buffer.clear();
-                m_lastLineInBuffer.clear();
+                m_lastPartialLineInBuffer.clear();
                 m_fileOffsetStart = m_fileOffsetEnd;
                 m_done = true;
                 return;
@@ -54,16 +54,18 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             int lastLF = 0;
             {
                 // Let's find the latest \n if exists.
-                for (lastLF = (int)m_lastLineInBuffer.size() + (int)bytesRead - 1; lastLF >= 0; lastLF--)
+                for (lastLF = (int)m_lastPartialLineInBuffer.size() + (int)bytesRead - 1; lastLF >= 0; lastLF--)
                 {
                     if (m_buffer[lastLF] == '\n')
                         break;
                 }
 
                 if (lastLF < 0)
-                    RuntimeError("Length of MLF sequence cannot exceed %d bytes.", (int)m_bufferSize);
+                    RuntimeError("Length of MLF sequence cannot exceed '%" PRIu64 "' bytes.", m_bufferSize);
             }
 
+            // Lets cut the buffer at the last end of string, and save partial string 
+            // in m_lastLineInBuffer
             auto logicalBufferEnd = lastLF + 1;
 
             m_fileOffsetStart = m_fileOffsetEnd;
@@ -72,8 +74,8 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             auto lastParialLineSize = m_buffer.size() - logicalBufferEnd;
 
             // Remember the last possibly parital line.
-            m_lastLineInBuffer.resize(lastParialLineSize);
-            memcpy(&m_lastLineInBuffer[0], m_buffer.data() + logicalBufferEnd, lastParialLineSize);
+            m_lastPartialLineInBuffer.resize(lastParialLineSize);
+            memcpy(&m_lastPartialLineInBuffer[0], m_buffer.data() + logicalBufferEnd, lastParialLineSize);
 
             m_buffer.resize(logicalBufferEnd);
         }
@@ -92,12 +94,12 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
         size_t id = 0;
         SequenceDescriptor sd = {};
-        int currentState = 0;
+        State currentState = State::Header;
         vector<boost::iterator_range<char*>> lines;
         vector<boost::iterator_range<char*>> tokens;
-        bool isValid = true;
-        size_t lastNonEmptyString = 0;
-        size_t sequenceStartOffset = 0;
+        bool isValid = true;              // Flag indicating whether the current sequence is valid.
+        size_t lastNonEmptyString = 0;    // Needed to parse information about last frame
+        size_t sequenceStartOffset = 0;   // Offset in file where current sequence starts.
         while (!m_done)
         {
             lines.clear();
@@ -111,57 +113,58 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
                 switch (currentState)
                 {
-                case 0:
+                case State::Header:
                 {
-                    if (std::string(lines[i].begin(), lines[i].end()) != "#!MLF!#")
+                    if (string(lines[i].begin(), lines[i].end()) != "#!MLF!#")
                         RuntimeError("Expected MLF header was not found.");
-                    currentState = 1;
+                    currentState = State::UtteranceKey;
                 }
                 break;
-                case 1:
+                case State::UtteranceKey:
                 {
-                    // When several files are appended to a big mlf, usually the can be 
+                    // When several files are appended to a big mlf, there can be
                     // an MLF header between the utterances.
-                    if (std::string(lines[i].begin(), lines[i].end()) == "#!MLF!#")
+                    if (string(lines[i].begin(), lines[i].end()) == "#!MLF!#")
                         continue;
 
-                    sd = {};
                     sequenceStartOffset = m_fileOffsetStart + lines[i].begin() - m_buffer.data();
                     isValid = TryParseSequenceId(lines[i], id, corpus->KeyToId);
+                    sd = {};
                     sd.m_key.m_sequence = id;
-                    currentState = 2;
+                    currentState = State::UtteranceFrames;
                 }
                 break;
 
-                case 2:
+                case State::UtteranceFrames:
                 {
-                    if (std::distance(lines[i].begin(), lines[i].end()) == 1 && *lines[i].begin() == '.')
+                    if (distance(lines[i].begin(), lines[i].end()) != 1 || *lines[i].begin() != '.')
+                        continue; // Still current utterance.
+
+                    // Ok, a single . on a line means we found the end of the utterance.
+                    auto sequenceEndOffset = m_fileOffsetStart + lines[i].end() - m_buffer.data();
+
+                    // Let's find last non empty string and parse information about frames out of it.
+                    // Here we assume that the sequence is correct, if not - it will be invalidated later
+                    // when the actual data is read.
+                    if (lastNonEmptyString != SIZE_MAX)
+                        m_lastNonEmptyLine = string(lines[lastNonEmptyString].begin(), lines[lastNonEmptyString].end());
+
+                    if (m_lastNonEmptyLine.empty())
+                        isValid = false;
+                    else
                     {
-                        currentState = 1;
-                        auto sequenceEndOffset = m_fileOffsetStart + lines[i].end() - m_buffer.data();
-
-                        // Let's find last non empty string and parse information about frames out of it.
-                        // Here we assume that the sequence is correct, if not - it will be invalidated later 
-                        // when the actual data is read.
-                        if (lastNonEmptyString != SIZE_MAX)
-                            m_lastNonEmptyLine = std::string(lines[lastNonEmptyString].begin(), lines[lastNonEmptyString].end());
-
-                        if (m_lastNonEmptyLine.empty())
-                            isValid = false;
-                        else
-                        {
-                            tokens.clear();
-                            auto container = boost::make_iterator_range(&m_lastNonEmptyLine[0], &m_lastNonEmptyLine[0] + m_lastNonEmptyLine.size());
-                            boost::split(tokens, container, boost::is_any_of(" "));
-                            auto range = MLFFrameRange::ParseFrameRange(tokens);
-                            sd.m_numberOfSamples = static_cast<uint32_t>(range.second);
-                        }
-
-                        if (isValid)
-                            m_index.AddSequence(sd, sequenceStartOffset, sequenceEndOffset);
-                        else
-                            fprintf(stderr, "WARNING: Cannot parse the utterance %s at offset (%" PRIu64 ")\n", corpus->IdToKey(sd.m_key.m_sequence).c_str(), sequenceStartOffset);
+                        tokens.clear();
+                        auto container = boost::make_iterator_range(&m_lastNonEmptyLine[0], &m_lastNonEmptyLine[0] + m_lastNonEmptyLine.size());
+                        boost::split(tokens, container, boost::is_any_of(" "));
+                        auto range = MLFFrameRange::ParseFrameRange(tokens);
+                        sd.m_numberOfSamples = static_cast<uint32_t>(range.second);
                     }
+
+                    if (isValid)
+                        m_index.AddSequence(sd, sequenceStartOffset, sequenceEndOffset);
+                    else
+                        fprintf(stderr, "WARNING: Cannot parse the utterance '%s' at offset (%" PRIu64 ")\n", corpus->IdToKey(sd.m_key.m_sequence).c_str(), sequenceStartOffset);
+                    currentState = State::UtteranceKey; // Let's try the next one.
                 }
                 break;
                 default:
@@ -172,9 +175,9 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             }
 
             // Remembering last non empty string to be able to retrieve time frame information 
-            // when dot is encoutered on the border of two buffers.
+            // when the dot is just at the beginning of the next buffer.
             if (lastNonEmptyString != SIZE_MAX)
-                m_lastNonEmptyLine = std::string(lines[lastNonEmptyString].begin(), lines[lastNonEmptyString].end());
+                m_lastNonEmptyLine = string(lines[lastNonEmptyString].begin(), lines[lastNonEmptyString].end());
             else
                 m_lastNonEmptyLine.clear();
 
@@ -189,11 +192,11 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         boost::split(lines, range, boost::is_any_of("\r\n"));
     }
 
-    bool MLFIndexer::TryParseSequenceId(const boost::iterator_range<char*>& line, size_t& id, std::function<size_t(const std::string&)> keyToId)
+    bool MLFIndexer::TryParseSequenceId(const boost::iterator_range<char*>& line, size_t& id, function<size_t(const string&)> keyToId)
     {
         id = 0;
 
-        std::string key(line.begin(), line.end());
+        string key(line.begin(), line.end());
         boost::trim_right(key);
 
         if (key.size() > 2 && key.front() == '"' && key.back() == '"')
