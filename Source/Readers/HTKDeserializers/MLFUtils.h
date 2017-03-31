@@ -80,7 +80,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         MLFUtteranceParser(const StateTablePtr& states) : m_states(states)
         {}
 
-        bool Parse(const SequenceDescriptor& utterance, const boost::iterator_range<char*>& utteranceData, std::vector<MLFFrameRange>& result);
+        bool Parse(const boost::iterator_range<char*>& utteranceData, std::vector<MLFFrameRange>& result);
     };
 
 }}} // namespace

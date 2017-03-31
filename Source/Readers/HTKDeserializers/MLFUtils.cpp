@@ -137,7 +137,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool MLFUtteranceParser::Parse(const SequenceDescriptor& sequence, const boost::iterator_range<char*>& sequenceData, vector<MLFFrameRange>& utterance)
+    bool MLFUtteranceParser::Parse(const boost::iterator_range<char*>& sequenceData, vector<MLFFrameRange>& utterance)
     {
         // Split to lines.
         vector<boost::iterator_range<char*>> lines;
@@ -157,8 +157,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         // Check that mlf entry has a correct sequence key.
         if (sequenceKey.length() < 3 || sequenceKey[0] != '"' || sequenceKey[sequenceKey.length() - 1] != '"')
         {
-            fprintf(stderr, "WARNING: sequence entry (%s)\n", sequenceKey.c_str());
-            fprintf(stderr, "Skip current mlf entry from offset '%" PRIu64 "' until offset '%" PRIu64 "'.\n", sequence.m_fileOffsetBytes, sequence.m_fileOffsetBytes + sequence.m_byteSize);
+            fprintf(stderr, "WARNING: skipping sequence entry (%s) due to invalid key\n", sequenceKey.c_str());
             return false;
         }
 

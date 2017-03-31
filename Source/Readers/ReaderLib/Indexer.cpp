@@ -69,11 +69,10 @@ void Indexer::BuildFromLines()
         {
             SequenceDescriptor sd = {};
             sd.m_numberOfSamples = 1;
-            sd.m_fileOffsetBytes = offset;
+            auto sequenceOffset = offset;
             offset = GetFileOffset() + 1;
-            sd.m_byteSize = offset - sd.m_fileOffsetBytes;
             sd.m_key.m_sequence = lines;
-            m_index.AddSequence(sd);
+            m_index.AddSequence(sd, sequenceOffset, offset);
             ++m_pos;
             ++lines;
         }
@@ -89,10 +88,8 @@ void Indexer::BuildFromLines()
         // add a sequence to the index, parser will have to deal with it.
         SequenceDescriptor sd = {};
         sd.m_numberOfSamples = 1;
-        sd.m_fileOffsetBytes = offset;
-        sd.m_byteSize = m_fileOffsetEnd - sd.m_fileOffsetBytes;
         sd.m_key.m_sequence = lines;
-        m_index.AddSequence(sd);
+        m_index.AddSequence(sd, offset, m_fileOffsetEnd);
     }
 }
 
@@ -150,8 +147,7 @@ void Indexer::Build(CorpusDescriptorPtr corpus)
     }
 
     SequenceDescriptor sd = {};
-    sd.m_fileOffsetBytes = offset;
-
+    auto sequenceOffset = offset;
     size_t previousId = id;
     while (!m_done)
     {
@@ -162,20 +158,17 @@ void Indexer::Build(CorpusDescriptorPtr corpus)
         if (!m_done && tryGetSequenceId(id) && id != previousId)
         {
             // found a new sequence, which starts at the [offset] bytes into the file
-            sd.m_byteSize = offset - sd.m_fileOffsetBytes;
             sd.m_key.m_sequence = previousId;
-            m_index.AddSequence(sd);
+            m_index.AddSequence(sd, sequenceOffset, offset);
 
             sd = {};
-            sd.m_fileOffsetBytes = offset;
+            sequenceOffset = offset;
             previousId = id;
         }
     }
 
-    // calculate the byte size for the last sequence
-    sd.m_byteSize = m_fileOffsetEnd - sd.m_fileOffsetBytes;
     sd.m_key.m_sequence = previousId;
-    m_index.AddSequence(sd);
+    m_index.AddSequence(sd, sequenceOffset, m_fileOffsetEnd);
 }
 
 void Indexer::SkipLine()

@@ -90,15 +90,17 @@ public:
         if (descriptor.m_sequences.empty() || !descriptor.m_byteSize)
             LogicError("Empty chunks are not supported.");
 
-        size_t sizeInBytes = descriptor.m_sequences.back().m_fileOffsetBytes + descriptor.m_sequences.back().m_byteSize -
-            descriptor.m_sequences.front().m_fileOffsetBytes;
+        size_t sizeInBytes =
+            descriptor.m_sequences.back().SequenceOffsetInChunk() + descriptor.m_offset +
+            descriptor.m_sequences.back().SizeInBytes() -
+            descriptor.m_sequences.front().SequenceOffsetInChunk() + descriptor.m_offset;
 
         m_buffer.resize(sizeInBytes + 1);
 
         // Make sure we always have 0 at the end for buffer overrun.
         m_buffer[sizeInBytes] = 0;
 
-        auto chunkOffset = descriptor.m_sequences.front().m_fileOffsetBytes;
+        auto chunkOffset = descriptor.m_offset;
 
         // Seek and read chunk into memory.
         int rc = _fseeki64(f.get(), chunkOffset, SEEK_SET);
@@ -124,26 +126,26 @@ public:
 
 #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < descriptor.m_sequences.size(); ++i)
-            CacheSequence(descriptor.m_sequences[i]);
+            CacheSequence(descriptor.m_sequences[i], i);
 
         std::vector<char> tmp;
         m_buffer.swap(tmp);
     }
 
-    void CacheSequence(const SequenceDescriptor& sequence)
+    void CacheSequence(const SequenceDescriptor& sequence, size_t index)
     {
-        auto start = m_buffer.data() + (sequence.m_fileOffsetBytes - m_descriptor.m_sequences.front().m_fileOffsetBytes);
-        auto end = start + sequence.m_byteSize;
+        auto start = m_buffer.data() + sequence.SequenceOffsetInChunk();
+        auto end = start + sequence.SizeInBytes();
 
         std::vector<MLFFrameRange> utterance;
-        bool parsed = m_parser.Parse(sequence, boost::make_iterator_range(start, end), utterance);
+        bool parsed = m_parser.Parse(boost::make_iterator_range(start, end), utterance);
         if (!parsed) // cannot parse
         {
             fprintf(stderr, "WARNING: Cannot parse the utterance %s\n", m_parent.m_corpus->IdToKey(sequence.m_key.m_sequence).c_str());
-            m_valid[sequence.m_indexInChunk] = false;
+            m_valid[index] = false;
             return;
         }
-        m_sequences[sequence.m_indexInChunk] = std::move(utterance);
+        m_sequences[index] = std::move(utterance);
     }
 
     void GetSequence(size_t sequenceIndex, std::vector<SequenceDataPtr>& result) override
@@ -208,7 +210,7 @@ public:
         // Parse the data on different threads to avoid locking during GetSequence calls.
 #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < descriptor.m_sequences.size(); ++i)
-            CacheSequence(descriptor.m_sequences[i]);
+            CacheSequence(descriptor.m_sequences[i], i);
 
         std::vector<char> tmp;
         m_buffer.swap(tmp);
@@ -243,21 +245,21 @@ public:
     }
 
     // Parses and caches sequence in the buffer for future fast retrieval in frame mode.
-    void CacheSequence(const SequenceDescriptor& sequence)
+    void CacheSequence(const SequenceDescriptor& sequence, size_t index)
     {
-        auto start = m_buffer.data() + (sequence.m_fileOffsetBytes - m_descriptor.m_sequences.front().m_fileOffsetBytes);
-        auto end = start + sequence.m_byteSize;
+        auto start = m_buffer.data() + sequence.SequenceOffsetInChunk();
+        auto end = start + sequence.SizeInBytes();
 
         std::vector<MLFFrameRange> utterance;
-        bool parsed = m_parser.Parse(sequence, boost::make_iterator_range(start, end), utterance);
+        bool parsed = m_parser.Parse(boost::make_iterator_range(start, end), utterance);
         if (!parsed)
         {
-            m_valid[sequence.m_indexInChunk] = false;
+            m_valid[index] = false;
             fprintf(stderr, "WARNING: Cannot parse the utterance %s\n", m_parent.m_corpus->IdToKey(sequence.m_key.m_sequence).c_str());
             return;
         }
 
-        auto startRange = m_classIds.begin() + m_descriptor.m_firstSamples[sequence.m_indexInChunk];
+        auto startRange = m_classIds.begin() + m_descriptor.m_firstSamples[index];
         for(size_t i = 0; i < utterance.size(); ++i)
         {
             const auto& range = utterance[i];
@@ -354,7 +356,7 @@ void MLFDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus, co
         m_stateTable->ReadStateList(stateListPath);
     }
 
-    auto emptyPair = std::pair<const ChunkDescriptor*, const SequenceDescriptor*>(nullptr, nullptr);
+    auto emptyPair = std::make_pair(std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max());
     size_t totalNumSequences = 0;
     size_t totalNumFrames = 0;
     for (const auto& path : mlfPaths)
@@ -373,10 +375,11 @@ void MLFDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus, co
 
         // Build some auxiliary information.
         const auto& index = indexer->GetIndex();
-        for (const auto& chunk : index.m_chunks)
+        for (uint32_t chunkIndex = 0; chunkIndex < index.m_chunks.size(); ++chunkIndex)
         {
+            const auto& chunk = index.m_chunks[chunkIndex];
             // Preparing chunk info that will be exposed to the outside.
-            for (size_t i = 0; i < chunk.m_sequences.size(); ++i)
+            for (uint32_t i = 0; i < chunk.m_sequences.size(); ++i)
             {
                 const auto& sequence = chunk.m_sequences[i];
 
@@ -384,7 +387,7 @@ void MLFDeserializer::InitializeChunkDescriptions(CorpusDescriptorPtr corpus, co
                     m_keyToSequence.resize(sequence.m_key.m_sequence + 1, emptyPair);
 
                 assert(m_keyToSequence[sequence.m_key.m_sequence] == emptyPair);
-                m_keyToSequence[sequence.m_key.m_sequence] = std::make_pair(&chunk, &sequence);
+                m_keyToSequence[sequence.m_key.m_sequence] = std::make_pair(chunkIndex, i);
             }
 
             totalNumSequences += chunk.m_numberOfSequences;
@@ -484,33 +487,28 @@ bool MLFDeserializer::GetSequenceDescriptionByKey(const KeyType& key, SequenceDe
     if (key.m_sequence >= m_keyToSequence.size())
         return false;
 
-    auto chunkAndSequence =  m_keyToSequence[key.m_sequence];
-    if (!chunkAndSequence.first)
+    auto chunkAndSequenceIndex =  m_keyToSequence[key.m_sequence];
+    // Check whether the sequence is invalid.
+    if (chunkAndSequenceIndex.first == std::numeric_limits<uint32_t>::max() &&
+        chunkAndSequenceIndex.second == std::numeric_limits<uint32_t>::max())
         return false;
 
-    auto c = std::lower_bound(
-        m_chunks.begin(),
-        m_chunks.end(),
-        chunkAndSequence.first);
+    const auto* chunk = m_chunks[chunkAndSequenceIndex.first];
+    const auto& sequence = chunk->m_sequences[chunkAndSequenceIndex.second];
 
-    if (c == m_chunks.end())
-        RuntimeError("Unexpected chunk specified.");
-
-    auto sequence = chunkAndSequence.second;
-
-    result.m_chunkId = static_cast<ChunkIdType>(c - m_chunks.begin());
+    result.m_chunkId = chunkAndSequenceIndex.first;
     result.m_key = key;
 
     if (m_frameMode)
     {
-        result.m_indexInChunk = chunkAndSequence.first->m_firstSamples[sequence->m_indexInChunk] + key.m_sample;
+        result.m_indexInChunk = chunk->m_firstSamples[chunkAndSequenceIndex.second] + key.m_sample;
         result.m_numberOfSamples = 1;
     }
     else
     {
         assert(result.m_key.m_sample == 0);
-        result.m_indexInChunk = sequence->m_indexInChunk;
-        result.m_numberOfSamples = sequence->m_numberOfSamples;
+        result.m_indexInChunk = chunkAndSequenceIndex.second;
+        result.m_numberOfSamples = sequence.m_numberOfSamples;
     }
     return true;
 }

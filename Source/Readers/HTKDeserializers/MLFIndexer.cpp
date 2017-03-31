@@ -97,6 +97,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         vector<boost::iterator_range<char*>> tokens;
         bool isValid = true;
         size_t lastNonEmptyString = 0;
+        size_t sequenceStartOffset = 0;
         while (!m_done)
         {
             lines.clear();
@@ -125,7 +126,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
                         continue;
 
                     sd = {};
-                    sd.m_fileOffsetBytes = m_fileOffsetStart + lines[i].begin() - m_buffer.data();
+                    sequenceStartOffset = m_fileOffsetStart + lines[i].begin() - m_buffer.data();
                     isValid = TryParseSequenceId(lines[i], id, corpus->KeyToId);
                     sd.m_key.m_sequence = id;
                     currentState = 2;
@@ -136,8 +137,8 @@ namespace Microsoft { namespace MSR { namespace CNTK {
                 {
                     if (std::distance(lines[i].begin(), lines[i].end()) == 1 && *lines[i].begin() == '.')
                     {
-                        sd.m_byteSize = m_fileOffsetStart + lines[i].end() - m_buffer.data() - sd.m_fileOffsetBytes;
                         currentState = 1;
+                        auto sequenceEndOffset = m_fileOffsetStart + lines[i].end() - m_buffer.data();
 
                         // Let's find last non empty string and parse information about frames out of it.
                         // Here we assume that the sequence is correct, if not - it will be invalidated later 
@@ -157,9 +158,9 @@ namespace Microsoft { namespace MSR { namespace CNTK {
                         }
 
                         if (isValid)
-                            m_index.AddSequence(sd);
+                            m_index.AddSequence(sd, sequenceStartOffset, sequenceEndOffset);
                         else
-                            fprintf(stderr, "WARNING: Cannot parse the utterance %s at offset (%" PRIu64 ")\n", corpus->IdToKey(sd.m_key.m_sequence).c_str(), sd.m_fileOffsetBytes);
+                            fprintf(stderr, "WARNING: Cannot parse the utterance %s at offset (%" PRIu64 ")\n", corpus->IdToKey(sd.m_key.m_sequence).c_str(), sequenceStartOffset);
                     }
                 }
                 break;
