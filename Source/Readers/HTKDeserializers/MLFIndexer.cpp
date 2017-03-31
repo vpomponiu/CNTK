@@ -103,10 +103,9 @@ namespace Microsoft { namespace MSR { namespace CNTK {
             RuntimeError("Input file is empty");
 
         size_t id = 0;
-        SequenceDescriptor sd = {};
+        //SequenceDescriptor sd = {};
         State currentState = State::Header;
-        vector<boost::iterator_range<char*>> lines;
-        vector<boost::iterator_range<char*>> tokens;
+        vector<boost::iterator_range<char*>> lines, tokens;
         bool isValid = true;              // Flag indicating whether the current sequence is valid.
         size_t lastNonEmptyString = 0;    // Needed to parse information about last frame
         size_t sequenceStartOffset = 0;   // Offset in file where current sequence starts.
@@ -139,8 +138,6 @@ namespace Microsoft { namespace MSR { namespace CNTK {
 
                     sequenceStartOffset = m_fileOffsetStart + lines[i].begin() - m_buffer.data();
                     isValid = TryParseSequenceKey(lines[i], id, corpus->KeyToId);
-                    sd = {};
-                    sd.m_key.m_sequence = id;
                     currentState = State::UtteranceFrames;
                 }
                 break;
@@ -159,6 +156,7 @@ namespace Microsoft { namespace MSR { namespace CNTK {
                     if (lastNonEmptyString != SIZE_MAX)
                         m_lastNonEmptyLine = string(lines[lastNonEmptyString].begin(), lines[lastNonEmptyString].end());
 
+                    uint32_t numberOfSamples = 0;
                     if (m_lastNonEmptyLine.empty())
                         isValid = false;
                     else
@@ -167,13 +165,13 @@ namespace Microsoft { namespace MSR { namespace CNTK {
                         auto container = boost::make_iterator_range(&m_lastNonEmptyLine[0], &m_lastNonEmptyLine[0] + m_lastNonEmptyLine.size());
                         boost::split(tokens, container, boost::is_any_of(" "));
                         auto range = MLFFrameRange::ParseFrameRange(tokens);
-                        sd.m_numberOfSamples = static_cast<uint32_t>(range.second);
+                        numberOfSamples = static_cast<uint32_t>(range.second);
                     }
 
                     if (isValid)
-                        m_index.AddSequence(sd, sequenceStartOffset, sequenceEndOffset);
+                        m_index.AddSequence(SequenceDescriptor{ KeyType { id, 0 }, numberOfSamples }, sequenceStartOffset, sequenceEndOffset);
                     else
-                        fprintf(stderr, "WARNING: Cannot parse the utterance '%s' at offset (%" PRIu64 ")\n", corpus->IdToKey(sd.m_key.m_sequence).c_str(), sequenceStartOffset);
+                        fprintf(stderr, "WARNING: Cannot parse the utterance '%s' at offset (%" PRIu64 ")\n", corpus->IdToKey(id).c_str(), sequenceStartOffset);
                     currentState = State::UtteranceKey; // Let's try the next one.
                 }
                 break;

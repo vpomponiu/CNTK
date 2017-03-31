@@ -213,7 +213,10 @@ namespace Microsoft { namespace MSR { namespace CNTK {
         if (sequenceLocation == keys.end())
             return false;
 
+        assert(sequenceLocation->second.first < index.m_chunks.size());
         const auto& chunk = index.m_chunks[sequenceLocation->second.first];
+
+        assert(sequenceLocation->second.second < chunk.m_sequences.size());
         const auto sequence = chunk.m_sequences[sequenceLocation->second.second];
 
         result.m_chunkId = sequenceLocation->second.first;

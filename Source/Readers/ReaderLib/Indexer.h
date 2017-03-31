@@ -12,18 +12,19 @@
 
 namespace Microsoft { namespace MSR { namespace CNTK {
 
-// Sequence metadata. This text-reader specific descriptor adds two additional
-// fields: file offset and size in bytes. Both are required to efficiently
-// locate and retrieve a sequence from file, given a sequence descriptor.
+// Sequence metadata that allows index a sequence in a binary file.
 struct SequenceDescriptor
 {
-    SequenceDescriptor() : m_chunkOffsetBytes(0),
-        m_byteSize(0), m_numberOfSamples(0)
+    SequenceDescriptor(KeyType key, uint32_t numberOfSamples)
+        : m_chunkOffsetBytes(0),
+          m_byteSize(0), 
+          m_numberOfSamples(numberOfSamples),
+          m_key(key)
     {
     }
 
-    KeyType m_key;                      // Sequence key, uniquely identifies the sequence.
-    uint32_t m_numberOfSamples;         // Number of samples in a sequence.
+    const KeyType m_key;                      // Sequence key, uniquely identifies the sequence.
+    const uint32_t m_numberOfSamples;         // Number of samples in a sequence.
 
     uint32_t SequenceOffsetInChunk() const
     {
@@ -86,7 +87,7 @@ struct Index
     // assigns an appropriate chunk id to the sequence descriptor,
     // ensures that chunks do not exceed the maximum allowed size
     // (except when a sequence size is greater than the maximum chunk size)
-    void AddSequence(SequenceDescriptor& sd, size_t startOffsetInFile, size_t endOffsetInFile)
+    void AddSequence(SequenceDescriptor&& sd, size_t startOffsetInFile, size_t endOffsetInFile)
     {
         sd.m_byteSize = static_cast<uint32_t>(endOffsetInFile - startOffsetInFile);
         if (static_cast<size_t>(sd.m_byteSize) != endOffsetInFile - startOffsetInFile)
